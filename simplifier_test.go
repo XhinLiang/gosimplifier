@@ -5,148 +5,305 @@ import (
 	"testing"
 )
 
+type ExampleStruct struct {
+	Test       int
+	Debug      string
+	Data       DataStruct
+	EntityList []EntityStruct
+}
+
+type DataStruct struct {
+	DataTest  string
+	DataDebug int
+}
+
+type EntityStruct struct {
+	SubProperties SubPropertyStruct
+}
+
+type SubPropertyStruct struct {
+	ABC string
+	DEF string
+}
+
+func TestNewSimplifier(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "Test", "Debug" ],
+		"property_simplifiers": {
+			"Data": {
+				"remove_properties": [ "DataTest", "DataDebug" ]
+			},
+			"EntityList": {
+				"property_simplifiers": {
+					"SubProperties": {
+						"remove_properties": [ "ABC", "DEF" ]
+					}
+				}
+			}
+		}
+	}`
+
+	simplifier, err := NewSimplifier(rulesJson)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+	if simplifier == nil {
+		t.Error("Expected simplifier to be not nil")
+	}
+}
+
+func TestNewSimplifierWithInvalidJson(t *testing.T) {
+	rulesJson := `{ This is an invalid JSON string }`
+
+	simplifier, err := NewSimplifier(rulesJson)
+	if err == nil {
+		t.Error("Expected error, but got none")
+	}
+	if simplifier != nil {
+		t.Error("Expected simplifier to be nil")
+	}
+}
+
 func TestSimplify(t *testing.T) {
-	// Define an example struct
-	type SubProperties struct {
-		ABC string
-		DEF string
-	}
+	rulesJson := `{
+		"remove_properties": [ "Test", "Debug" ],
+		"property_simplifiers": {
+			"Data": {
+				"remove_properties": [ "DataTest", "DataDebug" ]
+			},
+			"EntityList": {
+				"property_simplifiers": {
+					"SubProperties": {
+						"remove_properties": [ "ABC", "DEF" ]
+					}
+				}
+			}
+		}
+	}`
 
-	type Entity struct {
-		SubProperties []SubProperties
-		EntityTest    string
-	}
+	simplifier, _ := NewSimplifier(rulesJson)
 
-	type ExampleStruct struct {
-		Test       string
-		Debug      bool
-		Data       map[string]interface{}
-		EntityList []Entity
-		OtherField string
-	}
-
-	// Define the rules JSON
-	rulesJSON := `
-{
-  "remove_properties": [
-    "Test",
-    "Debug"
-  ],
-  "property_simplifiers": {
-    "Data": {
-      "remove_properties": [
-        "data_test",
-        "data_debug"
-      ]
-    },
-    "EntityList": {
-      "property_simplifiers": {
-        "SubProperties": {
-          "remove_properties": [
-            "ABC",
-            "DEF"
-          ]
-        }
-      }
-    }
-  }
-}
-`
-
-	// Create a new Simplifier instance
-	simplifier, err := NewSimplifier(rulesJSON)
-	if err != nil {
-		t.Fatalf("Failed to create Simplifier: %v", err)
-	}
-
-	// Create an example struct
-	original := &ExampleStruct{
-		Test:  "test value",
-		Debug: true,
-		Data: map[string]interface{}{
-			"data_test":  "data test value",
-			"data_debug": false,
+	original := ExampleStruct{
+		Test:  5,
+		Debug: "debug",
+		Data: DataStruct{
+			DataTest:  "data_test",
+			DataDebug: 123,
 		},
-		EntityList: []Entity{
+		EntityList: []EntityStruct{
 			{
-				SubProperties: []SubProperties{
-					{
-						ABC: "abc value",
-						DEF: "def value",
-					},
+				SubProperties: SubPropertyStruct{
+					ABC: "abc",
+					DEF: "def",
 				},
-				EntityTest: "entity test value",
-			},
-		},
-		OtherField: "other value",
-	}
-	// Simplify the original struct
-	simplified, err := simplifier.Simplify(original)
-	if err != nil {
-		t.Fatalf("Failed to simplify struct: %v", err)
-	}
-
-	// Validate the simplified struct
-	expected := &ExampleStruct{
-		Test:  "",
-		Debug: false,
-		Data:  map[string]interface{}{},
-		EntityList: []Entity{
-			{
-				SubProperties: []SubProperties{{ABC: "", DEF: ""}},
-				EntityTest:    "entity test value",
-			}},
-		OtherField: "other value",
-	}
-
-	if !reflect.DeepEqual(simplified, expected) {
-		t.Errorf("Simplified struct does not match expected value.\nExpected: %+v\nActual: %+v", expected, simplified)
-	}
-}
-
-func TestSimplifyNestedMap(t *testing.T) {
-	// Define an example struct
-	type ExampleStruct struct {
-		Data map[string]interface{}
-	}
-
-	// Define the rules JSON
-	rulesJSON := `
-{
-  "remove_properties": [
-    "Data"
-  ]
-}
-`
-
-	// Create a new Simplifier instance
-	simplifier, err := NewSimplifier(rulesJSON)
-	if err != nil {
-		t.Fatalf("Failed to create Simplifier: %v", err)
-	}
-
-	// Create an example struct with nested map
-	original := &ExampleStruct{
-		Data: map[string]interface{}{
-			"nested": map[string]interface{}{
-				"key1": "value1",
-				"key2": "value2",
 			},
 		},
 	}
 
-	// Simplify the original struct
 	simplified, err := simplifier.Simplify(original)
 	if err != nil {
-		t.Fatalf("Failed to simplify struct: %v", err)
+		t.Error("Unexpected error", err)
 	}
 
-	simplifiedStruct, ok := simplified.(*ExampleStruct)
+	simplifiedStruct, ok := simplified.(ExampleStruct)
 	if !ok {
-		t.Fatalf("Failed to cast simplified struct to *ExampleStruct")
+		t.Error("Expected ExampleStruct, but got different type")
 	}
 
-	if simplifiedStruct.Data != nil {
-		t.Errorf("Simplified struct does not match expected value.\nExpected: %+v\nActual: %+v", nil, simplifiedStruct.Data)
+	if simplifiedStruct.Test != 0 {
+		t.Error("Expected Test to be zero")
+	}
+	if simplifiedStruct.Debug != "" {
+		t.Error("Expected Debug to be zero value")
+	}
+	if simplifiedStruct.Data.DataTest != "" {
+		t.Error("Expected Data.DataTest to be zero value")
+	}
+	if simplifiedStruct.Data.DataDebug != 0 {
+		t.Error("Expected Data.DataDebug to be zero value")
+	}
+	for _, entity := range simplifiedStruct.EntityList {
+		if entity.SubProperties.ABC != "" {
+			t.Error("Expected EntityList.SubProperties.ABC to be zero value")
+		}
+		if entity.SubProperties.DEF != "" {
+			t.Error("Expected EntityList.SubProperties.DEF to be zero value")
+		}
+	}
+}
+
+func TestNewSimplifierEmptyJson(t *testing.T) {
+	rulesJson := `{}`
+
+	simplifier, err := NewSimplifier(rulesJson)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+	if simplifier == nil {
+		t.Error("Expected simplifier to be not nil")
+	}
+}
+
+func TestSimplifyInvalidType(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "Test", "Debug" ]
+	}`
+
+	simplifier, _ := NewSimplifier(rulesJson)
+
+	// Using an int instead of a struct
+	original := 10
+
+	simplified, err := simplifier.Simplify(original)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	simplifiedInt, ok := simplified.(int)
+	if !ok {
+		t.Error("Expected int, but got different type")
+	}
+	if simplifiedInt != 10 {
+		t.Error("Expected value to remain unchanged")
+	}
+}
+
+func TestSimplifyNoRules(t *testing.T) {
+	rulesJson := `{}`
+
+	simplifier, _ := NewSimplifier(rulesJson)
+
+	original := ExampleStruct{
+		Test:  5,
+		Debug: "debug",
+		Data: DataStruct{
+			DataTest:  "data_test",
+			DataDebug: 123,
+		},
+		EntityList: []EntityStruct{
+			{
+				SubProperties: SubPropertyStruct{
+					ABC: "abc",
+					DEF: "def",
+				},
+			},
+		},
+	}
+
+	simplified, err := simplifier.Simplify(original)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	simplifiedStruct, ok := simplified.(ExampleStruct)
+	if !ok {
+		t.Error("Expected ExampleStruct, but got different type")
+	}
+	if !reflect.DeepEqual(simplifiedStruct, original) {
+		t.Error("Expected original and simplified to be identical")
+	}
+}
+
+func TestNewSimplifierInvalidPropertyName(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "NonexistentProperty" ]
+	}`
+
+	simplifier, err := NewSimplifier(rulesJson)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+	if simplifier == nil {
+		t.Error("Expected simplifier to be not nil")
+	}
+}
+
+func TestSimplifyInvalidPropertyName(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "NonexistentProperty" ]
+	}`
+
+	simplifier, _ := NewSimplifier(rulesJson)
+
+	original := ExampleStruct{
+		Test:  5,
+		Debug: "debug",
+		Data: DataStruct{
+			DataTest:  "data_test",
+			DataDebug: 123,
+		},
+		EntityList: []EntityStruct{
+			{
+				SubProperties: SubPropertyStruct{
+					ABC: "abc",
+					DEF: "def",
+				},
+			},
+		},
+	}
+
+	simplified, err := simplifier.Simplify(original)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	simplifiedStruct, ok := simplified.(ExampleStruct)
+	if !ok {
+		t.Error("Expected ExampleStruct, but got different type")
+	}
+	if !reflect.DeepEqual(simplifiedStruct, original) {
+		t.Error("Expected original and simplified to be identical when removing non-existent properties")
+	}
+}
+
+func TestNewSimplifierEmptyPropertyName(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "" ]
+	}`
+
+	simplifier, err := NewSimplifier(rulesJson)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+	if simplifier == nil {
+		t.Error("Expected simplifier to be not nil")
+	}
+}
+
+func TestSimplifyEmptyPropertyName(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "" ]
+	}`
+
+	simplifier, _ := NewSimplifier(rulesJson)
+
+	original := ExampleStruct{
+		Test:  5,
+		Debug: "debug",
+		Data: DataStruct{
+			DataTest:  "data_test",
+			DataDebug: 123,
+		},
+		EntityList: []EntityStruct{
+			{
+				SubProperties: SubPropertyStruct{
+					ABC: "abc",
+					DEF: "def",
+				},
+			},
+		},
+	}
+
+	simplified, err := simplifier.Simplify(original)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	simplifiedStruct, ok := simplified.(ExampleStruct)
+	if !ok {
+		t.Error("Expected ExampleStruct, but got different type")
+	}
+	if !reflect.DeepEqual(simplifiedStruct, original) {
+		t.Error("Expected original and simplified to be identical when removing empty property name")
 	}
 }

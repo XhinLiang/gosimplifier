@@ -13,6 +13,10 @@ type Rule struct {
 
 // Simplifier defines the interface for struct simplification.
 type Simplifier interface {
+	// Simplify method:
+	// 1. Receives any type of struct or pointer to it, returns the same type of struct(pointer)
+	// 2. Will not modify the original, but just make a copy as the return value
+	// 3. Removes the properties of the return value according to the rules
 	Simplify(original interface{}) (interface{}, error)
 }
 
@@ -28,7 +32,7 @@ type Simplifier interface {
 //                                                 -------------------
 //                                      field1.sub1|       field1.sub2|
 //                                                 |                  |
-//                                          simplifierImpl      removeRuler
+//                                          simplifierImpl       removeRuler
 //                             --------------------------------
 //                            |                                |
 //               field1.sub1.a|                   field1.sub1.b|
@@ -48,8 +52,35 @@ type removeRuler struct {
 
 var removeRulerSingleton = &removeRuler{}
 
-// NewSimplifier creates a new instance of simplifierImpl with the given rules based on the origin Simplifier.
-// If the origin is nil, a new Simplifier is created without any base rules.
+// NewSimplifier creates a new instance of simplifierImpl with the given rules
+//
+// Example:
+// {
+//  "remove_properties": [ "Test", "Debug" ],
+//  "property_simplifiers": {
+//    "Data": {
+//      "remove_properties": [ "data_test", "data_debug" ]
+//    },
+//    "EntityList": {
+//      "property_simplifiers": {
+//        "SubProperties": {
+//          "remove_properties": [ "ABC", "DEF" ]
+//        }
+//      }
+//    }
+//  }
+// }
+//
+// For struct instance root:
+//    var root ExampleStruct
+// The following properties will be removed:
+//    root.Test
+//    root.Debug
+//    root.Data.data_test
+//    root.Data.data_debug
+//    root.EntityList[?].ABC (? could be any index of EntityList)
+//    root.EntityList[?].DEF (? could be any index of EntityList)
+//
 func NewSimplifier(rulesJson string) (Simplifier, error) {
 	rule := &Rule{}
 	err := json.Unmarshal([]byte(rulesJson), rule)

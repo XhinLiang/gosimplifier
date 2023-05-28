@@ -1,1 +1,1 @@
-# go-simplifier
+# gosimplifier
