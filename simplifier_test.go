@@ -40,9 +40,6 @@ func TestSimplify(t *testing.T) {
       ]
     },
     "EntityList": {
-      "remove_properties": [
-        "EntityTest"
-      ],
       "property_simplifiers": {
         "SubProperties": {
           "remove_properties": [
@@ -91,14 +88,65 @@ func TestSimplify(t *testing.T) {
 
 	// Validate the simplified struct
 	expected := &ExampleStruct{
-		Test:       "",
-		Debug:      false,
-		Data:       map[string]interface{}{},
-		EntityList: []Entity{{SubProperties: []SubProperties{{ABC: "", DEF: ""}}}},
+		Test:  "",
+		Debug: false,
+		Data:  map[string]interface{}{},
+		EntityList: []Entity{
+			{
+				SubProperties: []SubProperties{{ABC: "", DEF: ""}},
+				EntityTest:    "entity test value",
+			}},
 		OtherField: "other value",
 	}
 
 	if !reflect.DeepEqual(simplified, expected) {
 		t.Errorf("Simplified struct does not match expected value.\nExpected: %+v\nActual: %+v", expected, simplified)
+	}
+}
+
+func TestSimplifyNestedMap(t *testing.T) {
+	// Define an example struct
+	type ExampleStruct struct {
+		Data map[string]interface{}
+	}
+
+	// Define the rules JSON
+	rulesJSON := `
+{
+  "remove_properties": [
+    "Data"
+  ]
+}
+`
+
+	// Create a new Simplifier instance
+	simplifier, err := NewSimplifier(rulesJSON)
+	if err != nil {
+		t.Fatalf("Failed to create Simplifier: %v", err)
+	}
+
+	// Create an example struct with nested map
+	original := &ExampleStruct{
+		Data: map[string]interface{}{
+			"nested": map[string]interface{}{
+				"key1": "value1",
+				"key2": "value2",
+			},
+		},
+	}
+
+	// Simplify the original struct
+	simplified, err := simplifier.Simplify(original)
+	if err != nil {
+		t.Fatalf("Failed to simplify struct: %v", err)
+	}
+
+	simplifiedStruct, ok := simplified.(*ExampleStruct)
+	if !ok {
+		t.Fatalf("Failed to cast simplified struct to *ExampleStruct")
+	}
+
+	if simplifiedStruct.Data != nil {
+		t.Errorf("Simplified struct does not match expected value.\nExpected: %+v\nActual: %+v", nil, simplifiedStruct.Data)
 	}
 }
