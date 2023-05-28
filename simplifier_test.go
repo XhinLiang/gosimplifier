@@ -307,3 +307,260 @@ func TestSimplifyEmptyPropertyName(t *testing.T) {
 		t.Error("Expected original and simplified to be identical when removing empty property name")
 	}
 }
+
+func TestExtendSimplifier0(t *testing.T) {
+	rulesJsonBase := `{
+		"remove_properties": [ "Test", "Debug" ],
+		"property_simplifiers": {
+			"Data": {
+				"remove_properties": [ "DataTest" ]
+			}
+		}
+	}`
+
+	rulesJsonExtend := `{
+		"remove_properties": [ "Debug" ],
+		"property_simplifiers": {
+			"Data": {
+				"remove_properties": [ "DataDebug" ]
+			}
+		}
+	}`
+
+	baseSimplifier, _ := NewSimplifier(rulesJsonBase)
+	extendedSimplifier, err := ExtendSimplifier(baseSimplifier, rulesJsonExtend)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	original := ExampleStruct{
+		Test:  5,
+		Debug: "debug",
+		Data: DataStruct{
+			DataTest:  "data_test",
+			DataDebug: 123,
+		},
+	}
+
+	simplified, err := extendedSimplifier.Simplify(original)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	simplifiedStruct, ok := simplified.(ExampleStruct)
+	if !ok {
+		t.Error("Expected ExampleStruct, but got different type")
+	}
+	if simplifiedStruct.Test != 0 {
+		t.Error("Expected Test to be removed by the base simplifier rules")
+	}
+	if simplifiedStruct.Debug != "" {
+		t.Error("Expected Debug to be removed by the base and extended simplifier rules")
+	}
+	if simplifiedStruct.Data.DataTest != "" {
+		t.Error("Expected Data.DataTest to be removed by the base simplifier rules")
+	}
+	if simplifiedStruct.Data.DataDebug != 0 {
+		t.Error("Expected Data.DataDebug to be removed by the extended simplifier rules")
+	}
+}
+
+type ExampleStruct2 struct {
+	Name     string
+	Age      int
+	Data     string
+	Info     *SubStruct
+	NewField *AnotherStruct
+}
+
+type SubStruct struct {
+	Test  string
+	Debug string
+}
+
+type AnotherStruct struct {
+	SubTest string
+}
+
+func TestExtendSimplifier(t *testing.T) {
+	baseRulesJson := `{
+		"remove_properties": ["Name", "Data"],
+		"property_simplifiers": {
+			"Info": {
+				"remove_properties": ["Debug"]
+			}
+		}
+	}`
+
+	extendRulesJson := `{
+		"remove_properties": ["Age"],
+		"property_simplifiers": {
+			"Info": {
+				"remove_properties": ["Test"]
+			},
+			"NewField": {
+				"remove_properties": ["SubTest"]
+			}
+		}
+	}`
+
+	original := &ExampleStruct2{
+		Name: "John Doe",
+		Age:  30,
+		Data: "Data",
+		Info: &SubStruct{
+			Test:  "Test Value",
+			Debug: "Debug Value",
+		},
+		NewField: &AnotherStruct{
+			SubTest: "SubTest Value",
+		},
+	}
+
+	expected := &ExampleStruct2{
+		Name:     "",
+		Age:      0,
+		Data:     "",
+		Info:     nil,
+		NewField: nil,
+	}
+
+	baseSimplifier, err := NewSimplifier(baseRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	extendSimplifier, err := ExtendSimplifier(baseSimplifier, extendRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := extendSimplifier.Simplify(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestExtendSimplifierEmptyBase(t *testing.T) {
+	baseRulesJson := `{}`
+	extendRulesJson := `{
+		"remove_properties": ["Name", "Age"]
+	}`
+
+	original := &ExampleStruct2{
+		Name: "John Doe",
+		Age:  30,
+	}
+
+	expected := &ExampleStruct2{}
+
+	baseSimplifier, err := NewSimplifier(baseRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	extendSimplifier, err := ExtendSimplifier(baseSimplifier, extendRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := extendSimplifier.Simplify(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestExtendSimplifierEmptyExtend(t *testing.T) {
+	baseRulesJson := `{
+		"remove_properties": ["Name", "Age"]
+	}`
+	extendRulesJson := `{}`
+
+	original := &ExampleStruct2{
+		Name: "John Doe",
+		Age:  30,
+	}
+
+	expected := &ExampleStruct2{}
+
+	baseSimplifier, err := NewSimplifier(baseRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	extendSimplifier, err := ExtendSimplifier(baseSimplifier, extendRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := extendSimplifier.Simplify(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}
+
+func TestExtendSimplifierWithConflictingRules(t *testing.T) {
+	baseRulesJson := `{
+		"remove_properties": ["Name"],
+		"property_simplifiers": {
+			"Info": {
+				"remove_properties": ["Test"]
+			}
+		}
+	}`
+
+	extendRulesJson := `{
+		"remove_properties": ["Age"],
+		"property_simplifiers": {
+			"Info": {
+				"remove_properties": ["Debug"]
+			}
+		}
+	}`
+
+	original := &ExampleStruct2{
+		Name: "John Doe",
+		Age:  30,
+		Info: &SubStruct{
+			Test:  "Test Value",
+			Debug: "Debug Value",
+		},
+	}
+
+	expected := &ExampleStruct2{
+		Name: "",
+		Age:  0,
+		Info: nil,
+	}
+
+	baseSimplifier, err := NewSimplifier(baseRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	extendSimplifier, err := ExtendSimplifier(baseSimplifier, extendRulesJson)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := extendSimplifier.Simplify(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected %v, got %v", expected, result)
+	}
+}

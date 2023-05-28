@@ -2,6 +2,7 @@ package gosimplifier
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 )
 
@@ -40,6 +41,7 @@ type Simplifier interface {
 //
 type simplifierImpl struct {
 	propertySimplifiers map[string]ruler
+	rule                *Rule
 }
 
 type ruler interface {
@@ -83,8 +85,7 @@ var removeRulerSingleton = &removeRuler{}
 //
 func NewSimplifier(rulesJson string) (Simplifier, error) {
 	rule := &Rule{}
-	err := json.Unmarshal([]byte(rulesJson), rule)
-	if err != nil {
+	if err := json.Unmarshal([]byte(rulesJson), rule); err != nil {
 		return nil, err
 	}
 	return newSimplifier0(rule)
@@ -97,7 +98,69 @@ func newSimplifier0(rule *Rule) (*simplifierImpl, error) {
 	}
 	return &simplifierImpl{
 		propertySimplifiers: propertySimplifiers,
+		rule:                rule,
 	}, nil
+}
+
+// ExtendSimplifier extends the base simplifier with the given rules.
+// The new Simplifier will have the rules merge from the base and the given rules.
+func ExtendSimplifier(base Simplifier, rulesJson string) (Simplifier, error) {
+	baseImpl, ok := base.(*simplifierImpl)
+	if !ok {
+		return nil, fmt.Errorf("base Simplifier is not the correct type")
+	}
+	newRule := &Rule{}
+	if err := json.Unmarshal([]byte(rulesJson), newRule); err != nil {
+		return nil, err
+	}
+	mergedRule := mergeRules(baseImpl.rule, newRule)
+	return newSimplifier0(mergedRule)
+}
+
+func mergeRules(rule *Rule, newRule *Rule) *Rule {
+	// Copy old rule's remove_properties
+	mergedRemoveProperties := make([]string, len(rule.RemoveProperties))
+	copy(mergedRemoveProperties, rule.RemoveProperties)
+
+	// Copy old rule's property_simplifiers
+	mergedPropertySimplifiers := make(map[string]*Rule)
+	for k, v := range rule.PropertySimplifiers {
+		mergedPropertySimplifiers[k] = v
+	}
+
+	// Merge remove_properties
+	for _, prop := range newRule.RemoveProperties {
+		if !contains(mergedRemoveProperties, prop) {
+			mergedRemoveProperties = append(mergedRemoveProperties, prop)
+		}
+	}
+
+	// Merge property_simplifiers
+	for k, v := range newRule.PropertySimplifiers {
+		if _, ok := mergedPropertySimplifiers[k]; ok {
+			// If the key already exists, merge the sub-rule
+			mergedPropertySimplifiers[k] = mergeRules(mergedPropertySimplifiers[k], v)
+		} else {
+			// Otherwise, just add the new rule
+			mergedPropertySimplifiers[k] = v
+		}
+	}
+
+	// Return the merged rule
+	return &Rule{
+		RemoveProperties:    mergedRemoveProperties,
+		PropertySimplifiers: mergedPropertySimplifiers,
+	}
+}
+
+// Helper function to check if a string is in a slice
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+	return false
 }
 
 // createPropertySimplifiers creates property simplifiers based on the provided rules.
@@ -137,22 +200,27 @@ func (s *simplifierImpl) Simplify(original interface{}) (interface{}, error) {
 // deepCopy makes a deep copy of the original value recursively.
 func deepCopy(copy reflect.Value, original reflect.Value) reflect.Value {
 	switch original.Kind() {
-	case reflect.Struct:
-		for i := 0; i < original.NumField(); i++ {
-			copy.Field(i).Set(deepCopy(copy.Field(i), original.Field(i)))
+	case reflect.Ptr:
+		originalValue := original.Elem()
+		if !originalValue.IsValid() {
+			return original
 		}
+		newValue := reflect.New(originalValue.Type())
+		copy = newValue
+		deepCopy(copy.Elem(), originalValue)
 	case reflect.Slice:
 		copy.Set(reflect.MakeSlice(original.Type(), original.Len(), original.Cap()))
 		for i := 0; i < original.Len(); i++ {
-			copy.Index(i).Set(deepCopy(copy.Index(i), original.Index(i)))
+			deepCopy(copy.Index(i), original.Index(i))
 		}
-	case reflect.Ptr:
-		copy.Set(reflect.New(original.Type().Elem()))
-		copy.Elem().Set(deepCopy(copy.Elem(), original.Elem()))
+	case reflect.Struct:
+		copy.Set(reflect.New(original.Type()).Elem())
+		for i := 0; i < original.NumField(); i++ {
+			deepCopy(copy.Field(i), original.Field(i))
+		}
 	default:
 		copy.Set(original)
 	}
-
 	return copy
 }
 
