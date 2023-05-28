@@ -58,15 +58,13 @@ var removeRulerSingleton = &removeRuler{}
 //
 // Example:
 // {
-//  "remove_properties": [ "Test", "Debug" ],
+//  "remove_properties": [ "field1"],
 //  "property_simplifiers": {
-//    "Data": {
-//      "remove_properties": [ "data_test", "data_debug" ]
-//    },
-//    "EntityList": {
+//    "field2": {
+//      "remove_properties": [ "sub2" ]
 //      "property_simplifiers": {
-//        "SubProperties": {
-//          "remove_properties": [ "ABC", "DEF" ]
+//        "sub1": {
+//          "remove_properties": [ "a", "b" ]
 //        }
 //      }
 //    }
@@ -75,13 +73,12 @@ var removeRulerSingleton = &removeRuler{}
 //
 // For struct instance root:
 //    var root ExampleStruct
+//
 // The following properties will be removed:
-//    root.Test
-//    root.Debug
-//    root.Data.data_test
-//    root.Data.data_debug
-//    root.EntityList[?].ABC (? could be any index of EntityList)
-//    root.EntityList[?].DEF (? could be any index of EntityList)
+//    root.field1
+//    root.field2.sub2
+//    root.field2.sub1.a
+//    root.field2.sub1.b
 //
 func NewSimplifier(rulesJson string) (Simplifier, error) {
 	rule := &Rule{}
