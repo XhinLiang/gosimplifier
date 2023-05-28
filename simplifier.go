@@ -88,10 +88,11 @@ func NewSimplifier(rulesJson string) (Simplifier, error) {
 	if err := json.Unmarshal([]byte(rulesJson), rule); err != nil {
 		return nil, err
 	}
-	return newSimplifier0(rule)
+	return NewSimplifierByRule(rule)
 }
 
-func newSimplifier0(rule *Rule) (*simplifierImpl, error) {
+// NewSimplifierByRule creates a new instance of simplifierImpl with the given rule
+func NewSimplifierByRule(rule *Rule) (*simplifierImpl, error) {
 	propertySimplifiers, err := createPropertySimplifiers(rule)
 	if err != nil {
 		return nil, err
@@ -113,8 +114,11 @@ func ExtendSimplifier(base Simplifier, rulesJson string) (Simplifier, error) {
 	if err := json.Unmarshal([]byte(rulesJson), newRule); err != nil {
 		return nil, err
 	}
-	mergedRule := mergeRules(baseImpl.rule, newRule)
-	return newSimplifier0(mergedRule)
+	return ExtendSimplifierByRule(baseImpl, newRule)
+}
+
+func ExtendSimplifierByRule(baseImpl *simplifierImpl, newRule *Rule) (Simplifier, error) {
+	return NewSimplifierByRule(mergeRules(baseImpl.rule, newRule))
 }
 
 func mergeRules(rule *Rule, newRule *Rule) *Rule {
@@ -168,7 +172,7 @@ func createPropertySimplifiers(rule *Rule) (map[string]ruler, error) {
 	propertySimplifiers := make(map[string]ruler)
 
 	for propName, subRule := range rule.PropertySimplifiers {
-		propertySimplifier, err := newSimplifier0(subRule)
+		propertySimplifier, err := NewSimplifierByRule(subRule)
 		if err != nil {
 			return nil, err
 		}
