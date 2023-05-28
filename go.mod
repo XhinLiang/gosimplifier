@@ -1,3 +1,3 @@
-module github.com/xxhhiinn002/gosimplifier
+module github.com/xhinliang/gosimplifier
 
 go 1.17
