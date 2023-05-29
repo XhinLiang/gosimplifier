@@ -1,6 +1,7 @@
 package gosimplifier
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -254,6 +255,40 @@ func TestSimplifyInvalidPropertyName(t *testing.T) {
 	if !reflect.DeepEqual(simplifiedStruct, original) {
 		t.Error("Expected original and simplified to be identical when removing non-existent properties")
 	}
+}
+
+func TestSimplifyInvalidPropertyName0(t *testing.T) {
+	rulesJson := `{
+		"remove_properties": [ "field1" ]
+	}`
+
+	simplifier, _ := NewSimplifier(rulesJson)
+
+	original := map[string]interface{}{
+		"field1": 5,
+		"field2": "debug",
+	}
+
+	simplified, err := simplifier.Simplify(original)
+	if err != nil {
+		t.Error("Unexpected error", err)
+	}
+
+	simplifiedMap, ok := simplified.(map[string]interface{})
+	if !ok {
+		t.Error("Expected ExampleStruct, but got different type")
+	}
+	if simplifiedMap["field1"] != nil {
+		t.Error("Expected field1 to be nil")
+	}
+	if simplifiedMap["field2"] != "debug" {
+		t.Error("Expected field2 to be unchanged")
+	}
+	simplifiedJson, jsonErr := json.Marshal(simplifiedMap)
+	if jsonErr != nil {
+		t.Error("Unexpected error", jsonErr)
+	}
+	t.Log("simplifiedMap", string(simplifiedJson))
 }
 
 func TestNewSimplifierEmptyPropertyName(t *testing.T) {
