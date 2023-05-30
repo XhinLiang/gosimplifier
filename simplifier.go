@@ -249,64 +249,60 @@ func (s *removeRuler) applyRules(value reflect.Value, parent *reflect.Value, map
 	}
 }
 
-// applyRules applies the rules to the struct recursively.
 func (s *simplifierImpl) applyRules(value reflect.Value, parent *reflect.Value, mapKey *reflect.Value, rootSimpifier *simplifierImpl) {
+	s.applyRules0(value, rootSimpifier)
+}
+
+func getRealValue(value reflect.Value) reflect.Value {
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
-			return
+			return reflect.Value{}
 		}
 		value = value.Elem()
 	}
+	return reflect.ValueOf(value.Interface())
+}
 
-	switch value.Kind() {
+func (s *simplifierImpl) applyRules0(value reflect.Value, rootSimpifier *simplifierImpl) {
+	// applyRules applies the rules to the struct recursively.
+	val, kind := value.Interface(), value.Kind()
+	if val == nil || kind == reflect.Invalid {
+		return
+	}
+	value = getRealValue(value)
+	underlyingKind := value.Kind()
+
+	switch underlyingKind {
+	case reflect.Slice:
+		for i := 0; i < value.Len(); i++ {
+			item := value.Index(i)
+			s.applyRules(item, &value, nil, rootSimpifier)
+		}
 	case reflect.Struct:
 		for i := 0; i < value.NumField(); i++ {
-			field := value.Field(i)
-			if !field.IsValid() || !field.CanInterface() {
-				continue
-			}
-			fieldName := value.Type().Field(i).Name
-
-			subSimplifier := s.propertySimplifiers[fieldName]
-			if subSimplifier == nil {
-				if rootSimpifier != nil {
-					// If the field is not in the rules, apply the root rules, just once
-					rootSimpifier.applyRules(field, nil, nil, nil)
-				}
-				continue
-			}
-
-			switch field.Kind() {
-			case reflect.Slice:
-				for i := 0; i < field.Len(); i++ {
-					item := field.Index(i)
-					if item.Kind() == reflect.Ptr {
-						item = item.Elem()
-					}
-					subSimplifier.applyRules(item, &value, nil, rootSimpifier)
-				}
-			default:
+			field, fieldName := value.Field(i), value.Type().Field(i).Name
+			if subSimplifier := s.propertySimplifiers[fieldName]; subSimplifier == nil {
+				rootSimpifier.applyRules0(field, rootSimpifier)
+			} else {
 				subSimplifier.applyRules(field, &value, nil, rootSimpifier)
 			}
 		}
 	case reflect.Map:
-		for _, key := range value.MapKeys() {
-			subSimplifier := s.propertySimplifiers[key.String()]
-			subValue := value.MapIndex(key)
-			if subSimplifier == nil {
-				if rootSimpifier != nil {
-					// If the field is not in the rules, apply the root rules, just once
-					rootSimpifier.applyRules(subValue, nil, nil, nil)
-				}
+		for _, mapKey := range value.MapKeys() {
+			mapValue := value.MapIndex(mapKey)
+			mapVal, mapKeyStr := mapValue.Interface(), mapKey.String()
+			if mapVal == nil && mapKeyStr == "" {
 				continue
 			}
-			if subValue.Kind() == reflect.Ptr {
-				if subValue.IsNil() {
-					continue
-				}
-				subValue = subValue.Elem()
+			if mapValue.IsZero() {
+				removeRulerSingleton.applyRules(mapValue, &value, &mapKey, rootSimpifier)
+				continue
 			}
-			subSimplifier.applyRules(subValue, &value, &key, rootSimpifier)
+			if subSimplifier := s.propertySimplifiers[mapKeyStr]; subSimplifier != nil {
+				subSimplifier.applyRules(mapValue, &value, &mapKey, rootSimpifier)
+				continue
+			}
+			rootSimpifier.applyRules0(mapValue, rootSimpifier)
 		}
 	}
 }
