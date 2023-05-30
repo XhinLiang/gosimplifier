@@ -10,8 +10,6 @@ Install Go Simplifier with:
 go get github.com/xhinliang/gosimplifier
 ```
 
-Make sure to replace `xhinliang` with your GitHub username.
-
 ## Usage
 
 Here is a simple example of how to use Go Simplifier:
@@ -59,17 +57,109 @@ This will output:
 {  data}
 ```
 
+### Advanced Usage Example
+
+You can create more complex rules that also apply to nested structures. For example, suppose you have the following structures:
+
+```go
+type ExampleStruct struct {
+	Test       int
+	Debug      string
+	Data       DataStruct
+	EntityList []EntityStruct
+	Nest       ExampleStruct0
+}
+
+type DataStruct struct {
+	DataTest  string
+	DataDebug int
+}
+
+type EntityStruct struct {
+	SubProperties SubPropertyStruct
+}
+
+type SubPropertyStruct struct {
+	ABC string
+	DEF string
+}
+
+type ExampleStruct0 struct {
+	Debug string
+}
+```
+
+You can create a set of rules that removes certain properties:
+
+```go
+rulesJson := `{
+	"remove_properties": [ "Debug" ],
+	"property_simplifiers": {
+		"Data": {
+			"remove_properties": [ "DataTest", "DataDebug" ]
+		},
+		"EntityList": {
+			"property_simplifiers": {
+				"SubProperties": {
+					"remove_properties": [ "ABC", "DEF" ]
+				}
+			}
+		}
+	}
+}`
+
+simplifier, _ := gosimplifier.NewSimplifier(rulesJson)
+
+original := ExampleStruct{
+	Test:  5,
+	Debug: "debug",
+	Data: DataStruct{
+		DataTest:  "data_test",
+		DataDebug: 123,
+	},
+	EntityList: []EntityStruct{
+		{
+			SubProperties: SubPropertyStruct{
+				ABC: "abc",
+				DEF: "def",
+			},
+		},
+	},
+	Nest: ExampleStruct0{
+		Debug: "debug",
+	},
+}
+
+simplified, err := simplifier.Simplify(original)
+// simplified now contains a simplified version of the original struct
+```
+
+In this case, the `Debug` field, `DataTest` and `DataDebug` fields inside `Data`, and `ABC` and `DEF` fields inside `SubProperties` will be removed.
+
 You can also use `NewSimplifierByRule` to create a simplifier from a `Rule` struct:
 
 ```go
 rule := &gosimplifier.Rule{
 	RemoveProperties:    []string{"Field1"},
-	PropertySimplifiers: map[string]*gosimplifier.Rule{
-        
-    },
+	PropertySimplifiers: map[string]*gosimplifier.Rule{},
 }
 
 simplifier, err := gosimplifier.NewSimplifierByRule(rule)
+// ...
+```
+
+## Extending
+
+Simplifier
+
+You can also extend an existing simplifier with additional rules:
+
+```go
+extendedRulesJson := `{
+	"remove_properties": ["Field2"]
+}`
+
+extendedSimplifier, err := gosimplifier.ExtendSimplifier(simplifier, extendedRulesJson)
 // ...
 ```
 

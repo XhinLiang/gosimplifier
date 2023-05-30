@@ -44,7 +44,7 @@ type simplifierImpl struct {
 }
 
 type ruler interface {
-	applyRules(parent *reflect.Value, value reflect.Value, MapKey *reflect.Value, root *simplifierImpl)
+	applyRules(value reflect.Value, mapParent *reflect.Value, mapKey *reflect.Value, root *simplifierImpl)
 }
 
 // removeRuler for removing a valueKey from parent
@@ -81,16 +81,22 @@ var removeRulerSingleton = &removeRuler{}
 //	root.field2.sub2
 //	root.field2.sub1.a
 //	root.field2.sub1.b
+//
+// Other properties will be kept.
 func NewSimplifier(rulesJson string) (Simplifier, error) {
 	rule := &Rule{}
 	if err := json.Unmarshal([]byte(rulesJson), rule); err != nil {
 		return nil, err
 	}
-	return NewSimplifierByRule(rule)
+	return newSimplifierByRule0(rule)
 }
 
-// NewSimplifierByRule creates a new instance of simplifierImpl with the given rule
-func NewSimplifierByRule(rule *Rule) (*simplifierImpl, error) {
+func NewSimplifierByRule(rule *Rule) (Simplifier, error) {
+	return newSimplifierByRule0(rule)
+}
+
+// newSimplifierByRule0 creates a new instance of simplifierImpl with the given rule
+func newSimplifierByRule0(rule *Rule) (*simplifierImpl, error) {
 	propertySimplifiers, err := createPropertySimplifiers(rule)
 	if err != nil {
 		return nil, err
@@ -116,7 +122,7 @@ func ExtendSimplifier(base Simplifier, rulesJson string) (Simplifier, error) {
 }
 
 func ExtendSimplifierByRule(baseImpl *simplifierImpl, newRule *Rule) (Simplifier, error) {
-	return NewSimplifierByRule(mergeRules(baseImpl.rule, newRule))
+	return newSimplifierByRule0(mergeRules(baseImpl.rule, newRule))
 }
 
 func mergeRules(rule *Rule, newRule *Rule) *Rule {
@@ -124,7 +130,7 @@ func mergeRules(rule *Rule, newRule *Rule) *Rule {
 	mergedRemoveProperties := make([]string, len(rule.RemoveProperties))
 	copy(mergedRemoveProperties, rule.RemoveProperties)
 
-	// Copy old rule's property_simplifiers
+	// Copy old rule's propertySimplifiers
 	mergedPropertySimplifiers := make(map[string]*Rule)
 	for k, v := range rule.PropertySimplifiers {
 		mergedPropertySimplifiers[k] = v
@@ -170,7 +176,7 @@ func createPropertySimplifiers(rule *Rule) (map[string]ruler, error) {
 	propertySimplifiers := make(map[string]ruler)
 
 	for propName, subRule := range rule.PropertySimplifiers {
-		propertySimplifier, err := NewSimplifierByRule(subRule)
+		propertySimplifier, err := newSimplifierByRule0(subRule)
 		if err != nil {
 			return nil, err
 		}
@@ -190,13 +196,13 @@ func (s *simplifierImpl) Simplify(original interface{}) (interface{}, error) {
 	copyType := reflect.TypeOf(original)
 
 	// Make a deep copy of the original value
-	copy := reflect.New(copyType).Elem()
-	copy = deepCopy(copy, copyValue)
+	cp := reflect.New(copyType).Elem()
+	cp = deepCopy(cp, copyValue)
 
 	// Apply the rules recursively
-	s.applyRules(nil, copy, nil, s)
+	s.applyRules(cp, nil, nil, s)
 
-	return copy.Interface(), nil
+	return cp.Interface(), nil
 }
 
 // deepCopy makes a deep copy of the original value recursively.
@@ -226,26 +232,25 @@ func deepCopy(copy reflect.Value, original reflect.Value) reflect.Value {
 	return copy
 }
 
-func (s *removeRuler) applyRules(parent *reflect.Value, value reflect.Value, valueKey *reflect.Value, root *simplifierImpl) {
+func (s *removeRuler) applyRules(value reflect.Value, parent *reflect.Value, mapKey *reflect.Value, rootSimplifier *simplifierImpl) {
 	if parent == nil {
 		return
 	}
-	p := *parent
-	switch p.Kind() {
+	switch p := *parent; p.Kind() {
 	case reflect.Struct:
 		if value.IsValid() && value.CanSet() {
 			value.Set(reflect.Zero(value.Type()))
 		}
 	case reflect.Map:
-		if valueKey == nil {
+		if mapKey == nil {
 			return
 		}
-		p.SetMapIndex(*valueKey, reflect.Value{})
+		p.SetMapIndex(*mapKey, reflect.Value{})
 	}
 }
 
 // applyRules applies the rules to the struct recursively.
-func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, mapKey *reflect.Value, root *simplifierImpl) {
+func (s *simplifierImpl) applyRules(value reflect.Value, parent *reflect.Value, mapKey *reflect.Value, rootSimpifier *simplifierImpl) {
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
 			return
@@ -264,8 +269,9 @@ func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, 
 
 			subSimplifier := s.propertySimplifiers[fieldName]
 			if subSimplifier == nil {
-				if root != nil {
-					root.applyRules(nil, field, nil, nil)
+				if rootSimpifier != nil {
+					// If the field is not in the rules, apply the root rules, just once
+					rootSimpifier.applyRules(field, nil, nil, nil)
 				}
 				continue
 			}
@@ -277,10 +283,10 @@ func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, 
 					if item.Kind() == reflect.Ptr {
 						item = item.Elem()
 					}
-					subSimplifier.applyRules(&value, item, nil, root)
+					subSimplifier.applyRules(item, &value, nil, rootSimpifier)
 				}
 			default:
-				subSimplifier.applyRules(&value, field, nil, root)
+				subSimplifier.applyRules(field, &value, nil, rootSimpifier)
 			}
 		}
 	case reflect.Map:
@@ -288,8 +294,9 @@ func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, 
 			subSimplifier := s.propertySimplifiers[key.String()]
 			subValue := value.MapIndex(key)
 			if subSimplifier == nil {
-				if root != nil {
-					root.applyRules(nil, subValue, nil, nil)
+				if rootSimpifier != nil {
+					// If the field is not in the rules, apply the root rules, just once
+					rootSimpifier.applyRules(subValue, nil, nil, nil)
 				}
 				continue
 			}
@@ -299,7 +306,7 @@ func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, 
 				}
 				subValue = subValue.Elem()
 			}
-			subSimplifier.applyRules(&value, subValue, &key, root)
+			subSimplifier.applyRules(subValue, &value, &key, rootSimpifier)
 		}
 	}
 }

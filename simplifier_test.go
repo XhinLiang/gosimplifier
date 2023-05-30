@@ -121,30 +121,17 @@ func TestSimplify(t *testing.T) {
 	if !ok {
 		t.Error("Expected ExampleStruct, but got different type")
 	}
-
-	if simplifiedStruct.Test != 5 {
-		t.Error("Expected Test to be 5")
-	}
-	if simplifiedStruct.Debug != "" {
-		t.Error("Expected Debug to be zero value")
-	}
-	if simplifiedStruct.Data.DataTest != "" {
-		t.Error("Expected Data.DataTest to be zero value")
-	}
-	if simplifiedStruct.Nest.Debug != "" {
-		t.Error("Expected Nest.Debug to be zero value")
-	}
-	if simplifiedStruct.Data.DataDebug != 0 {
-		t.Error("Expected Data.DataDebug to be zero value")
-	}
-	for _, entity := range simplifiedStruct.EntityList {
-		if entity.SubProperties.ABC != "" {
-			t.Error("Expected EntityList.SubProperties.ABC to be zero value")
-		}
-		if entity.SubProperties.DEF != "" {
-			t.Error("Expected EntityList.SubProperties.DEF to be zero value")
-		}
-	}
+	deepCheck(t, simplifiedStruct, ExampleStruct{
+		Test: 5,
+		EntityList: []EntityStruct{
+			{
+				SubProperties: SubPropertyStruct{
+					ABC: "",
+					DEF: "",
+				},
+			},
+		},
+	})
 }
 
 func TestNewSimplifierEmptyJson(t *testing.T) {
@@ -217,31 +204,34 @@ func TestSimplifyNoRules(t *testing.T) {
 	deepCheck(t, simplifiedStruct, original)
 }
 
-func deepCheck(t *testing.T, simplifiedStruct ExampleStruct, original ExampleStruct) {
-	if simplifiedStruct.Test != original.Test {
+func deepCheck(t *testing.T, simplified ExampleStruct, expect ExampleStruct) {
+	if simplified.Test != expect.Test {
 		t.Error("Expected Test to be unchanged")
 	}
-	if simplifiedStruct.Debug != original.Debug {
+	if simplified.Debug != expect.Debug {
 		t.Error("Expected Debug to be unchanged")
 	}
-	if simplifiedStruct.Data.DataTest != original.Data.DataTest {
+	if simplified.Data.DataTest != expect.Data.DataTest {
 		t.Error("Expected Data.DataTest to be unchanged")
 	}
-	if simplifiedStruct.Data.DataDebug != original.Data.DataDebug {
+	if simplified.Data.DataDebug != expect.Data.DataDebug {
 		t.Error("Expected Data.DataDebug to be unchanged")
 	}
-	for i, entity := range simplifiedStruct.EntityList {
-		if entity.SubProperties.ABC != original.EntityList[i].SubProperties.ABC {
+	if len(simplified.EntityList) != len(expect.EntityList) {
+		t.Fatal("Expected EntityList to be unchanged")
+	}
+	for i, entity := range simplified.EntityList {
+		if entity.SubProperties.ABC != expect.EntityList[i].SubProperties.ABC {
 			t.Error("Expected EntityList.SubProperties.ABC to be unchanged")
 		}
-		if entity.SubProperties.DEF != original.EntityList[i].SubProperties.DEF {
+		if entity.SubProperties.DEF != expect.EntityList[i].SubProperties.DEF {
 			t.Error("Expected EntityList.SubProperties.DEF to be unchanged")
 		}
 	}
-	if simplifiedStruct.Nest.Debug != original.Nest.Debug {
+	if simplified.Nest.Debug != expect.Nest.Debug {
 		t.Error("Expected Nest.Debug to be unchanged")
 	}
-	if simplifiedStruct.Nest.Data.DataTest != original.Nest.Data.DataTest {
+	if simplified.Nest.Data.DataTest != expect.Nest.Data.DataTest {
 		t.Error("Expected Nest.Data.DataTest to be unchanged")
 	}
 }
