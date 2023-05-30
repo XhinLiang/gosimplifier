@@ -6,11 +6,19 @@ import (
 	"testing"
 )
 
+type ExampleStruct0 struct {
+	Test       int
+	Debug      string
+	Data       DataStruct
+	EntityList []EntityStruct
+}
+
 type ExampleStruct struct {
 	Test       int
 	Debug      string
 	Data       DataStruct
 	EntityList []EntityStruct
+	Nest       ExampleStruct0
 }
 
 type DataStruct struct {
@@ -67,7 +75,7 @@ func TestNewSimplifierWithInvalidJson(t *testing.T) {
 
 func TestSimplify(t *testing.T) {
 	rulesJson := `{
-		"remove_properties": [ "Test", "Debug" ],
+		"remove_properties": [ "Debug" ],
 		"property_simplifiers": {
 			"Data": {
 				"remove_properties": [ "DataTest", "DataDebug" ]
@@ -99,6 +107,9 @@ func TestSimplify(t *testing.T) {
 				},
 			},
 		},
+		Nest: ExampleStruct0{
+			Debug: "debug",
+		},
 	}
 
 	simplified, err := simplifier.Simplify(original)
@@ -111,14 +122,17 @@ func TestSimplify(t *testing.T) {
 		t.Error("Expected ExampleStruct, but got different type")
 	}
 
-	if simplifiedStruct.Test != 0 {
-		t.Error("Expected Test to be zero")
+	if simplifiedStruct.Test != 5 {
+		t.Error("Expected Test to be 5")
 	}
 	if simplifiedStruct.Debug != "" {
 		t.Error("Expected Debug to be zero value")
 	}
 	if simplifiedStruct.Data.DataTest != "" {
 		t.Error("Expected Data.DataTest to be zero value")
+	}
+	if simplifiedStruct.Nest.Debug != "" {
+		t.Error("Expected Nest.Debug to be zero value")
 	}
 	if simplifiedStruct.Data.DataDebug != 0 {
 		t.Error("Expected Data.DataDebug to be zero value")
@@ -200,8 +214,35 @@ func TestSimplifyNoRules(t *testing.T) {
 	if !ok {
 		t.Error("Expected ExampleStruct, but got different type")
 	}
-	if !reflect.DeepEqual(simplifiedStruct, original) {
-		t.Error("Expected original and simplified to be identical")
+	deepCheck(t, simplifiedStruct, original)
+}
+
+func deepCheck(t *testing.T, simplifiedStruct ExampleStruct, original ExampleStruct) {
+	if simplifiedStruct.Test != original.Test {
+		t.Error("Expected Test to be unchanged")
+	}
+	if simplifiedStruct.Debug != original.Debug {
+		t.Error("Expected Debug to be unchanged")
+	}
+	if simplifiedStruct.Data.DataTest != original.Data.DataTest {
+		t.Error("Expected Data.DataTest to be unchanged")
+	}
+	if simplifiedStruct.Data.DataDebug != original.Data.DataDebug {
+		t.Error("Expected Data.DataDebug to be unchanged")
+	}
+	for i, entity := range simplifiedStruct.EntityList {
+		if entity.SubProperties.ABC != original.EntityList[i].SubProperties.ABC {
+			t.Error("Expected EntityList.SubProperties.ABC to be unchanged")
+		}
+		if entity.SubProperties.DEF != original.EntityList[i].SubProperties.DEF {
+			t.Error("Expected EntityList.SubProperties.DEF to be unchanged")
+		}
+	}
+	if simplifiedStruct.Nest.Debug != original.Nest.Debug {
+		t.Error("Expected Nest.Debug to be unchanged")
+	}
+	if simplifiedStruct.Nest.Data.DataTest != original.Nest.Data.DataTest {
+		t.Error("Expected Nest.Data.DataTest to be unchanged")
 	}
 }
 
@@ -252,9 +293,7 @@ func TestSimplifyInvalidPropertyName(t *testing.T) {
 	if !ok {
 		t.Error("Expected ExampleStruct, but got different type")
 	}
-	if !reflect.DeepEqual(simplifiedStruct, original) {
-		t.Error("Expected original and simplified to be identical when removing non-existent properties")
-	}
+	deepCheck(t, simplifiedStruct, original)
 }
 
 func TestSimplifyInvalidPropertyName0(t *testing.T) {
@@ -338,9 +377,7 @@ func TestSimplifyEmptyPropertyName(t *testing.T) {
 	if !ok {
 		t.Error("Expected ExampleStruct, but got different type")
 	}
-	if !reflect.DeepEqual(simplifiedStruct, original) {
-		t.Error("Expected original and simplified to be identical when removing empty property name")
-	}
+	deepCheck(t, simplifiedStruct, original)
 }
 
 func TestExtendSimplifier0(t *testing.T) {

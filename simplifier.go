@@ -23,29 +23,28 @@ type Simplifier interface {
 
 // simplifierImpl implements the Simplifier interface.
 //
-//                                simplifierImpl
-//                                      |
-//                      ------------------------------------
-//                field1|                            field2|
-//                      |                                  |
-//                 removeRuler                      simplifierImpl
-//                                                         |
-//                                                 -------------------
-//                                      field1.sub1|       field1.sub2|
-//                                                 |                  |
-//                                          simplifierImpl       removeRuler
-//                             --------------------------------
-//                            |                                |
-//               field1.sub1.a|                   field1.sub1.b|
-//                         removeRuler                  removeRuler
-//
+//	                 simplifierImpl
+//	                       |
+//	       ------------------------------------
+//	 field1|                            field2|
+//	       |                                  |
+//	  removeRuler                      simplifierImpl
+//	                                          |
+//	                                  -------------------
+//	                       field1.sub1|       field1.sub2|
+//	                                  |                  |
+//	                           simplifierImpl       removeRuler
+//	              --------------------------------
+//	             |                                |
+//	field1.sub1.a|                   field1.sub1.b|
+//	          removeRuler                  removeRuler
 type simplifierImpl struct {
 	propertySimplifiers map[string]ruler
 	rule                *Rule
 }
 
 type ruler interface {
-	applyRules(parent *reflect.Value, value reflect.Value, valueKey *reflect.Value)
+	applyRules(parent *reflect.Value, value reflect.Value, MapKey *reflect.Value, root *simplifierImpl)
 }
 
 // removeRuler for removing a valueKey from parent
@@ -57,29 +56,31 @@ var removeRulerSingleton = &removeRuler{}
 // NewSimplifier creates a new instance of simplifierImpl with the given rules
 //
 // Example:
-// {
-//  "remove_properties": [ "field1"],
-//  "property_simplifiers": {
-//    "field2": {
-//      "remove_properties": [ "sub2" ]
-//      "property_simplifiers": {
-//        "sub1": {
-//          "remove_properties": [ "a", "b" ]
-//        }
-//      }
-//    }
-//  }
-// }
+//
+//	{
+//	 "remove_properties": [ "field1"],
+//	 "property_simplifiers": {
+//	   "field2": {
+//	     "remove_properties": [ "sub2" ]
+//	     "property_simplifiers": {
+//	       "sub1": {
+//	         "remove_properties": [ "a", "b" ]
+//	       }
+//	     }
+//	   }
+//	 }
+//	}
 //
 // For struct instance root:
-//    var root ExampleStruct
+//
+//	var root ExampleStruct
 //
 // The following properties will be removed:
-//    root.field1
-//    root.field2.sub2
-//    root.field2.sub1.a
-//    root.field2.sub1.b
 //
+//	root.field1
+//	root.field2.sub2
+//	root.field2.sub1.a
+//	root.field2.sub1.b
 func NewSimplifier(rulesJson string) (Simplifier, error) {
 	rule := &Rule{}
 	if err := json.Unmarshal([]byte(rulesJson), rule); err != nil {
@@ -193,7 +194,7 @@ func (s *simplifierImpl) Simplify(original interface{}) (interface{}, error) {
 	copy = deepCopy(copy, copyValue)
 
 	// Apply the rules recursively
-	s.applyRules(nil, copy, nil)
+	s.applyRules(nil, copy, nil, s)
 
 	return copy.Interface(), nil
 }
@@ -225,7 +226,7 @@ func deepCopy(copy reflect.Value, original reflect.Value) reflect.Value {
 	return copy
 }
 
-func (s *removeRuler) applyRules(parent *reflect.Value, value reflect.Value, valueKey *reflect.Value) {
+func (s *removeRuler) applyRules(parent *reflect.Value, value reflect.Value, valueKey *reflect.Value, root *simplifierImpl) {
 	if parent == nil {
 		return
 	}
@@ -244,7 +245,7 @@ func (s *removeRuler) applyRules(parent *reflect.Value, value reflect.Value, val
 }
 
 // applyRules applies the rules to the struct recursively.
-func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, valueKey *reflect.Value) {
+func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, mapKey *reflect.Value, root *simplifierImpl) {
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
 			return
@@ -254,9 +255,18 @@ func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, 
 
 	switch value.Kind() {
 	case reflect.Struct:
-		for fieldName, subSimplifier := range s.propertySimplifiers {
-			field := value.FieldByName(fieldName)
+		for i := 0; i < value.NumField(); i++ {
+			field := value.Field(i)
 			if !field.IsValid() || !field.CanInterface() {
+				continue
+			}
+			fieldName := value.Type().Field(i).Name
+
+			subSimplifier := s.propertySimplifiers[fieldName]
+			if subSimplifier == nil {
+				if root != nil {
+					root.applyRules(nil, field, nil, nil)
+				}
 				continue
 			}
 
@@ -267,26 +277,29 @@ func (s *simplifierImpl) applyRules(parent *reflect.Value, value reflect.Value, 
 					if item.Kind() == reflect.Ptr {
 						item = item.Elem()
 					}
-					subSimplifier.applyRules(&value, item, nil)
+					subSimplifier.applyRules(&value, item, nil, root)
 				}
 			default:
-				subSimplifier.applyRules(&value, field, nil)
+				subSimplifier.applyRules(&value, field, nil, root)
 			}
 		}
 	case reflect.Map:
 		for _, key := range value.MapKeys() {
 			subSimplifier := s.propertySimplifiers[key.String()]
+			subValue := value.MapIndex(key)
 			if subSimplifier == nil {
+				if root != nil {
+					root.applyRules(nil, subValue, nil, nil)
+				}
 				continue
 			}
-			subValue := value.MapIndex(key)
 			if subValue.Kind() == reflect.Ptr {
 				if subValue.IsNil() {
 					continue
 				}
 				subValue = subValue.Elem()
 			}
-			subSimplifier.applyRules(&value, subValue, &key)
+			subSimplifier.applyRules(&value, subValue, &key, root)
 		}
 	}
 }
